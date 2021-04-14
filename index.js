@@ -1,10 +1,20 @@
+const ENV = process.env.ENV || 'DEV'
+
+if (ENV === 'DEV') {
+  require('dotenv').config()
+}
+
 const express = require('express')
 const cors = require('cors')
 const morgan = require('morgan')
 
+const handleErrors = require('./middlewares/handleErrors')
+const notFound = require('./middlewares/notFound')
+
+require('./mongo')
+const Person = require('./models/Person')
+
 const app = express()
-
-
 
 app.use(cors())
 app.use(express.json())
@@ -27,91 +37,84 @@ app.use(morgan((tokens, req, res) => {
 
 app.use(express.static('build'))
 
-let persons = [
-  {
-    id: 1,
-    name: 'Arto Hellas',
-    phone: 609719857
-  },
-  {
-    id: 2,
-    name: 'Ada Lovelace',
-    phone: 60845711
-  },
-  {
-    id: 3,
-    name: 'Miguel Sanchez',
-    phone: 690845172
-  },
-  {
-    id: 4,
-    name: 'Marta Poveda',
-    phone: 696651823
-  }
-]
-
-app.get('/api/persons', (req, res) => {
-  res.json(persons)
+app.get('/api/persons', (req, res, next) => {
+  Person.find({})
+    .then(persons => res.json(persons))
+    .catch(error => next(error))
 })
 
-app.get('/api/persons/:id', (req, res) => {
-  const id = Number(req.params.id)
-  res.json(persons.find(person => person.id === id))
+app.get('/api/persons/:id', (req, res, next) => {
+  const id = req.params.id
+
+  Person.findById(id).then(note => {
+    return note
+      ? res.json(note)
+      : next({ error: 'person not found' })
+  }).catch(error => next(error))
 })
 
-app.delete('/api/persons/:id', (req, res) => {
-  const id = Number(req.params.id)
+app.delete('/api/persons/:id', (req, res, next) => {
+  const id = req.params.id
 
-  if (persons.find(person => person.id === id)) {
-    persons = persons.filter(person => person.id !== id)
-    return res.status(204).json(persons)
-  }
-
-  res.status(404).send({
-    error: 'Person not found'
-  })
+  Person.findOneAndRemove(id)
+    .then(() => res.status(204).end())
+    .catch(error => next(error))
 })
 
-app.post('/api/persons', (req, res) => {
+app.post('/api/persons', (req, res, next) => {
   const person = req.body
 
   if (!person || !person.name || !person.phone) {
-    return res.status(400).send({
-      error: 'No person or name'
-    })
+    next({ name: 'BadRequest' })
   }
 
-  if (persons.find(personAlready => personAlready.name.toLowerCase() === person.name.toLowerCase())) {
-    return res.status(409).send({
-      error: 'Duplicate name'
+  // TODO: Implementar que no se guarde en bbdd si el nombre existe
+
+  let personAlready = null
+
+  Person.find({ name: person.name })
+    .then(person => {
+      console.log({ person })
+      personAlready = person
     })
+    .catch(error => next(error))
+
+  console.log({ personAlready })
+  if (personAlready) {
+    next({ name: 'DuplicateName' })
   }
 
-  const ids = persons.map(person => person.id)
-  const newId = Math.max(...ids) + 1
-
-  const newPerson = {
-    id: newId,
+  const newPerson = new Person({
     name: person.name,
     phone: person.phone
-  }
+  })
 
-  persons = [...persons, newPerson]
-
-  res.status(201).json(newPerson)
+  newPerson.save()
+    .then(savedPerson => {
+      res.status(201).json(savedPerson)
+    })
+    .catch(error => next(error))
 })
 
-app.get('/info', (req, res) => {
+app.get('/info', (req, res, next) => {
   const date = new Date().toUTCString()
-  res.send(
-    `<p>Phonebook has info for ${persons.length} people</p>
+
+  let nPersons = 0
+
+  Person.countDocuments()
+    .then(totalPersons => {
+      nPersons = totalPersons
+    }).catch(error => next(error))
+
+    .res.send(
+    `<p>Phonebook has info for ${nPersons} people</p>
     <p>${date}</p>`
-  )
+    )
 })
 
-app.use((req, res) => {
-  res.status(404).send()
-})
+app.use(handleErrors)
+
+app.use(notFound)
 
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
