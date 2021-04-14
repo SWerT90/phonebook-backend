@@ -4,6 +4,8 @@ const morgan = require('morgan')
 
 const app = express()
 
+
+
 app.use(cors())
 app.use(express.json())
 morgan.token('bodyRequest', (req) => {
@@ -22,6 +24,8 @@ app.use(morgan((tokens, req, res) => {
     ].join(' ')
   }
 }))
+
+app.use(express.static('build'))
 
 let persons = [
   {
