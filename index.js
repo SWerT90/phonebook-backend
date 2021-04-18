@@ -46,18 +46,18 @@ app.get('/api/persons', (req, res, next) => {
 app.get('/api/persons/:id', (req, res, next) => {
   const id = req.params.id
 
-  Person.findById(id).then(note => {
-    return note
-      ? res.json(note)
-      : next({ error: 'person not found' })
+  Person.findById(id).then(person => {
+    return person
+      ? res.json(person)
+      : next({ name: 'NotFound' })
   }).catch(error => next(error))
 })
 
 app.delete('/api/persons/:id', (req, res, next) => {
   const id = req.params.id
 
-  Person.findOneAndRemove(id)
-    .then(() => res.status(204).end())
+  Person.findByIdAndRemove(id)
+    .then(result => res.status(204).end())
     .catch(error => next(error))
 })
 
@@ -66,22 +66,6 @@ app.post('/api/persons', (req, res, next) => {
 
   if (!person || !person.name || !person.phone) {
     next({ name: 'BadRequest' })
-  }
-
-  // TODO: Implementar que no se guarde en bbdd si el nombre existe
-
-  let personAlready = null
-
-  Person.find({ name: person.name })
-    .then(person => {
-      console.log({ person })
-      personAlready = person
-    })
-    .catch(error => next(error))
-
-  console.log({ personAlready })
-  if (personAlready) {
-    next({ name: 'DuplicateName' })
   }
 
   const newPerson = new Person({
@@ -93,28 +77,38 @@ app.post('/api/persons', (req, res, next) => {
     .then(savedPerson => {
       res.status(201).json(savedPerson)
     })
+    .catch(error => {
+      next(error)
+    })
+})
+
+app.put('/api/persons/:id', (req, res, next) => {
+  const id = req.params.id
+  const newPhone = req.body
+
+  Person.findByIdAndUpdate(id, newPhone, { new: true, runValidators: true })
+    .then(updatedPerson => {
+      console.log({ updatedPerson })
+      res.status(200).json(updatedPerson)
+    })
     .catch(error => next(error))
 })
 
 app.get('/info', (req, res, next) => {
   const date = new Date().toUTCString()
 
-  let nPersons = 0
-
-  Person.countDocuments()
+  Person.countDocuments({})
     .then(totalPersons => {
-      nPersons = totalPersons
+      res.send(
+        `<p>Phonebook has info for ${totalPersons} people</p>
+        <p>${date}</p>`
+      )
     }).catch(error => next(error))
-
-    .res.send(
-    `<p>Phonebook has info for ${nPersons} people</p>
-    <p>${date}</p>`
-    )
 })
 
-app.use(handleErrors)
-
 app.use(notFound)
+
+app.use(handleErrors)
 
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
